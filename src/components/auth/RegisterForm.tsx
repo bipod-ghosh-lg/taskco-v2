@@ -75,16 +75,16 @@ export default function RegisterForm() {
       </div>
 
       {serverError && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{serverError}</p>
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-danger">{serverError}</p>
       )}
 
       <Button type="submit" loading={isSubmitting} className="w-full">
         Create account
       </Button>
 
-      <p className="text-center text-sm text-gray-500">
+      <p className="text-center text-sm text-muted">
         Already have an account?{' '}
-        <Link href="/login" className="font-medium text-indigo-600 hover:underline">
+        <Link href="/login" className="font-medium text-primary-text hover:underline">
           Sign in
         </Link>
       </p>

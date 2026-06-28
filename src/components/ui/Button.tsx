@@ -6,9 +6,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants = {
-  primary: 'bg-indigo-600 text-white hover:bg-indigo-700 focus-visible:ring-indigo-500',
-  secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus-visible:ring-indigo-500',
-  danger: 'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500',
+  primary: 'bg-primary text-white hover:bg-primary-hover focus-visible:ring-primary',
+  secondary: 'bg-surface text-subtle border border-border-input hover:bg-page focus-visible:ring-primary',
+  danger: 'bg-danger text-white hover:bg-danger-hover focus-visible:ring-danger',
 };
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(

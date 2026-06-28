@@ -1,26 +1,65 @@
 @import "tailwindcss";
 
+/* ── Design tokens ────────────────────────────────────────────────────────── */
+/* Semantic CSS variables. Tailwind v4's @theme block exposes them as         */
+/* utility classes: bg-page, text-heading, text-body, etc.                   */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surfaces */
+  --color-page:    #f9fafb; /* gray-50  — app shell background               */
+  --color-surface: #ffffff; /* white    — cards, modals, navbar               */
+
+  /* Borders */
+  --color-border:  #e5e7eb; /* gray-200 — card borders, dividers              */
+  --color-border-input: #d1d5db; /* gray-300 — form input borders             */
+
+  /* Text hierarchy */
+  --color-heading: #111827; /* gray-900 — page titles, card titles            */
+  --color-body:    #4b5563; /* gray-600 — descriptions, secondary content     */
+  --color-muted:   #9ca3af; /* gray-400 — dates, meta, placeholder            */
+  --color-subtle:  #374151; /* gray-700 — navbar name, label text             */
+
+  /* Brand / primary (indigo) */
+  --color-primary:       #4f46e5; /* indigo-600 — buttons, rings, avatar bg   */
+  --color-primary-hover: #4338ca; /* indigo-700 — hover state                 */
+  --color-primary-text:  #4f46e5; /* indigo-600 — links, focus rings          */
+
+  /* Danger */
+  --color-danger:       #dc2626; /* red-600 */
+  --color-danger-hover: #b91c1c; /* red-700 */
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* Surfaces */
+  --color-page:    var(--color-page);
+  --color-surface: var(--color-surface);
+
+  /* Borders */
+  --color-border:       var(--color-border);
+  --color-border-input: var(--color-border-input);
+
+  /* Text */
+  --color-heading: var(--color-heading);
+  --color-body:    var(--color-body);
+  --color-muted:   var(--color-muted);
+  --color-subtle:  var(--color-subtle);
+
+  /* Brand */
+  --color-primary:       var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-text:  var(--color-primary-text);
+
+  /* Danger */
+  --color-danger:       var(--color-danger);
+  --color-danger-hover: var(--color-danger-hover);
+
+  /* Fonts */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background-color: var(--color-page);
+  color: var(--color-body);
   font-family: Arial, Helvetica, sans-serif;
 }

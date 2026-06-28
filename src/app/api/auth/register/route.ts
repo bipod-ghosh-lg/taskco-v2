@@ -19,16 +19,17 @@ export async function POST(req: Request) {
   const { email, password, name } = parsed.data;
 
   const existing = await getUserByEmail(email);
-  if (existing) return failure('Email already registered', 409);
+  if (existing) return failure('Registration failed', 409);
 
   const passwordHash = await hash(password, 12);
   const user = await createUser(email, name, passwordHash);
   const token = await signToken({ sub: user.id, email: user.email });
 
-  const response = success({ token, user });
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  const response = success({ user }, 201);
   response.headers.set(
     'Set-Cookie',
-    `token=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800`,
+    `token=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${secure}`,
   );
   return response;
 }

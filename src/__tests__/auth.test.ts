@@ -13,14 +13,23 @@ jest.mock('@/lib/auth', () => ({
 jest.mock('@/db/queries/users', () => ({
   getUserByEmail: jest.fn(),
   createUser: jest.fn(),
+  getUserById: jest.fn(),
+}));
+
+jest.mock('@/lib/session', () => ({
+  getSession: jest.fn(),
 }));
 
 import { POST as register } from '@/app/api/auth/register/route';
 import { POST as login } from '@/app/api/auth/login/route';
-import { getUserByEmail, createUser } from '@/db/queries/users';
+import { GET as me } from '@/app/api/auth/me/route';
+import { getUserByEmail, createUser, getUserById } from '@/db/queries/users';
+import { getSession } from '@/lib/session';
 
 const mockGetUserByEmail = getUserByEmail as jest.MockedFunction<typeof getUserByEmail>;
 const mockCreateUser = createUser as jest.MockedFunction<typeof createUser>;
+const mockGetUserById = getUserById as jest.MockedFunction<typeof getUserById>;
+const mockGetSession = getSession as jest.MockedFunction<typeof getSession>;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,9 +65,8 @@ describe('POST /api/auth/register', () => {
     const res = await register(makeRequest({ email: 'alice@example.com', password: 'secret123', name: 'Alice' }));
     const body = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(typeof body.data.token).toBe('string');
-    expect(body.data.token.length).toBeGreaterThan(0);
+    expect(res.status).toBe(201);
+    expect(body.data.token).toBeUndefined();
     expect(body.data.user).toMatchObject({ id: 'user-123', email: 'alice@example.com', name: 'Alice' });
     expect(body.data.user).toHaveProperty('createdAt');
   });
@@ -116,7 +124,7 @@ describe('POST /api/auth/register', () => {
     const body = await res.json();
 
     expect(res.status).toBe(409);
-    expect(body.error).toMatch(/already registered/i);
+    expect(body.error).toMatch(/registration failed/i);
   });
 
   it('security: password sent to createUser is hashed, not plaintext', async () => {
@@ -144,7 +152,7 @@ describe('POST /api/auth/login', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(typeof body.data.token).toBe('string');
+    expect(body.data.token).toBeUndefined();
     expect(body.data.user).toMatchObject({ id: 'user-123', email: 'alice@example.com', name: 'Alice' });
     expect(body.data.user).toHaveProperty('createdAt');
   });
@@ -181,5 +189,48 @@ describe('POST /api/auth/login', () => {
   it('422: missing password', async () => {
     const res = await login(makeRequest({ email: 'alice@example.com' }));
     expect(res.status).toBe(422);
+  });
+});
+
+// ── me ────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/auth/me', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('success: returns 200 with id, email, name, createdAt', async () => {
+    mockGetSession.mockResolvedValue({ sub: 'user-123', email: 'alice@example.com' });
+    mockGetUserById.mockResolvedValue(FAKE_USER);
+
+    const res = await me(new Request('http://localhost/api/auth/me', { method: 'GET' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data).toMatchObject({ id: 'user-123', email: 'alice@example.com', name: 'Alice' });
+    expect(body.data).toHaveProperty('createdAt');
+  });
+
+  it('401: getSession returns null', async () => {
+    mockGetSession.mockResolvedValue(null);
+
+    const res = await me(new Request('http://localhost/api/auth/me', { method: 'GET' }));
+    expect(res.status).toBe(401);
+  });
+
+  it('404: getUserById returns null', async () => {
+    mockGetSession.mockResolvedValue({ sub: 'user-123', email: 'alice@example.com' });
+    mockGetUserById.mockResolvedValue(null);
+
+    const res = await me(new Request('http://localhost/api/auth/me', { method: 'GET' }));
+    expect(res.status).toBe(404);
+  });
+
+  it('security: response data.password is undefined', async () => {
+    mockGetSession.mockResolvedValue({ sub: 'user-123', email: 'alice@example.com' });
+    mockGetUserById.mockResolvedValue(FAKE_USER);
+
+    const res = await me(new Request('http://localhost/api/auth/me', { method: 'GET' }));
+    const body = await res.json();
+
+    expect(body.data.password).toBeUndefined();
   });
 });

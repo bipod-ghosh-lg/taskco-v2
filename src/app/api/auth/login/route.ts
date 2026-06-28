@@ -27,10 +27,11 @@ export async function POST(req: Request) {
   const { password: _, ...user } = userWithPassword;
   const token = await signToken({ sub: user.id, email: user.email });
 
-  const response = success({ token, user });
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  const response = success({ user });
   response.headers.set(
     'Set-Cookie',
-    `token=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800`,
+    `token=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${secure}`,
   );
   return response;
 }

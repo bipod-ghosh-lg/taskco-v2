@@ -4,12 +4,14 @@
 
 | Concern | Decision |
 |---|---|
-| Framework | Next.js 15 (App Router) |
-| Styling | Tailwind CSS |
+| Framework | Next.js 16 (App Router) |
+| Styling | Tailwind CSS v4 |
 | Validation | Zod + React Hook Form |
 | Icons | Lucide React |
 | Backend | Next.js API routes only (no Express) |
-| Database | PostgreSQL via Neon DB (`@neondatabase/serverless`) |
+| Database | PostgreSQL via Prisma ORM (`@prisma/client` + `@prisma/adapter-pg` + `pg`) |
+| ORM | Prisma — schema in `prisma/schema.prisma`, client in `src/generated/prisma/` |
+| Client state | Redux Toolkit (`@reduxjs/toolkit` + `react-redux`) |
 | Password hashing | `bcryptjs` |
 | Auth mechanism | JWT via `jose`, stored in `httpOnly; SameSite=Strict` cookie named `token` |
 | User scope | Single-user (no teams, no orgs) |
@@ -34,13 +36,17 @@ taskco-v2/
 ├── CLAUDE.md
 ├── .env.local                        # DATABASE_URL, JWT_SECRET
 ├── next.config.ts
-├── tailwind.config.ts
 ├── tsconfig.json
 ├── package.json
+├── prisma/
+│   └── schema.prisma                 # Prisma schema — source of truth for DB models
 │
 ├── src/
+│   ├── generated/
+│   │   └── prisma/                   # Auto-generated Prisma client (do not edit)
+│   │
 │   ├── app/
-│   │   ├── layout.tsx                # Root layout (html, body, font)
+│   │   ├── layout.tsx                # Root layout (html, body, font, Redux Provider)
 │   │   ├── globals.css               # Tailwind base imports
 │   │   │
 │   │   ├── (auth)/
@@ -64,8 +70,10 @@ taskco-v2/
 │   │       │   │   └── route.ts      # POST /api/auth/register
 │   │       │   ├── login/
 │   │       │   │   └── route.ts      # POST /api/auth/login
-│   │       │   └── logout/
-│   │       │       └── route.ts      # POST /api/auth/logout
+│   │       │   ├── logout/
+│   │       │   │   └── route.ts      # POST /api/auth/logout
+│   │       │   └── me/
+│   │       │       └── route.ts      # GET /api/auth/me
 │   │       ├── projects/
 │   │       │   ├── route.ts          # GET /api/projects, POST /api/projects
 │   │       │   └── [id]/
@@ -102,14 +110,22 @@ taskco-v2/
 │   │       ├── Navbar.tsx
 │   │       └── Sidebar.tsx
 │   │
+│   ├── store/
+│   │   ├── index.ts                  # Redux store setup (configureStore)
+│   │   ├── hooks.ts                  # Typed useAppDispatch / useAppSelector
+│   │   └── slices/
+│   │       ├── auth-slice.ts         # Current user state (id, email, name)
+│   │       ├── projects-slice.ts     # Projects list + selected project
+│   │       └── tasks-slice.ts        # Tasks list + filters (status, priority)
+│   │
 │   ├── lib/
-│   │   ├── db.ts                     # Neon DB client singleton
+│   │   ├── db.ts                     # Prisma client singleton (pg pool + adapter)
 │   │   ├── auth.ts                   # JWT sign / verify helpers (jose)
 │   │   ├── session.ts                # Read current user from cookie (server-side)
 │   │   └── api-response.ts           # success(), failure(), validationError() helpers
 │   │
 │   ├── db/
-│   │   ├── schema.sql                # Full DDL (run once against Neon)
+│   │   ├── schema.sql                # Legacy DDL reference (Prisma is authoritative)
 │   │   └── queries/
 │   │       ├── users.ts              # createUser, getUserByEmail, getUserById
 │   │       ├── projects.ts           # createProject, getProjects, getProjectById, updateProject, deleteProject
@@ -128,50 +144,71 @@ taskco-v2/
 
 ---
 
-## 3. Database Schema SQL
+## 3. Database Schema (Prisma)
 
-```sql
--- src/db/schema.sql
+Schema lives in `prisma/schema.prisma`. Prisma is the source of truth — `src/db/schema.sql` is kept only as a legacy reference.
 
-CREATE TYPE task_status AS ENUM ('TODO', 'IN_PROGRESS', 'DONE');
-CREATE TYPE task_priority AS ENUM ('LOW', 'MEDIUM', 'HIGH');
+```prisma
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
 
-CREATE TABLE users (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email       TEXT NOT NULL UNIQUE,
-  name        TEXT NOT NULL,
-  password    TEXT NOT NULL,           -- bcrypt hash
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+datasource db {
+  provider = "postgresql"
+}
 
-CREATE TABLE projects (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  name        TEXT NOT NULL,
-  description TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+enum TaskStatus   { TODO IN_PROGRESS DONE }
+enum TaskPriority { LOW MEDIUM HIGH }
 
-CREATE TABLE tasks (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  title       TEXT NOT NULL,
-  description TEXT,
-  status      task_status NOT NULL DEFAULT 'TODO',
-  priority    task_priority NOT NULL DEFAULT 'MEDIUM',
-  due_date    DATE,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  projects  Project[]
+  @@map("users")
+}
 
--- indexes
-CREATE INDEX idx_projects_user_id ON projects(user_id);
-CREATE INDEX idx_tasks_project_id ON tasks(project_id);
-CREATE INDEX idx_tasks_user_id    ON tasks(user_id);
-CREATE INDEX idx_tasks_status     ON tasks(status);
+model Project {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  name        String
+  description String?
+  color       String   @default("#3b82f6")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+  @@map("projects")
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  projectId   String       @map("project_id")
+  userId      String       @map("user_id")
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?    @map("due_date")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@map("tasks")
+}
+```
+
+Key differences from the original SQL plan: IDs are `cuid()` strings (not UUIDs), `Project` has a `color` field, cascade deletes are handled by Prisma relations.
+
+Useful commands:
+```bash
+npx prisma generate      # regenerate client after schema changes
+npx prisma db push       # push schema to DB without a migration file (dev)
+npx prisma migrate dev   # create and apply a named migration
+npx prisma studio        # open DB browser UI
 ```
 
 ---
@@ -235,10 +272,22 @@ CREATE INDEX idx_tasks_status     ON tasks(status);
 
 ### DB Client (`src/lib/db.ts`)
 ```typescript
-import { neon } from '@neondatabase/serverless';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@/generated/prisma/client';
 
-const sql = neon(process.env.DATABASE_URL!);
-export default sql;
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+
+function createPrisma() {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaPg(pool);
+  return new PrismaClient({ adapter });
+}
+
+const prisma = globalForPrisma.prisma ?? createPrisma();
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+
+export default prisma;
 ```
 
 ### API Response Helpers (`src/lib/api-response.ts`)
@@ -291,17 +340,41 @@ export async function GET(req: Request) {
 ```typescript
 // src/app/(app)/projects/page.tsx
 import { getSession } from '@/lib/session';
-import { getProjects } from '@/db/queries/projects';
+import prisma from '@/lib/db';
 import { redirect } from 'next/navigation';
 
 export default async function ProjectsPage() {
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const projects = await getProjects(session.userId);
+  const projects = await prisma.project.findMany({
+    where: { userId: session.userId },
+  });
   return <ProjectList projects={projects} />;
 }
 ```
+
+### Redux Store Setup (`src/store/index.ts`)
+```typescript
+import { configureStore } from '@reduxjs/toolkit';
+import authReducer from './slices/auth-slice';
+import projectsReducer from './slices/projects-slice';
+import tasksReducer from './slices/tasks-slice';
+
+export const store = configureStore({
+  reducer: {
+    auth: authReducer,
+    projects: projectsReducer,
+    tasks: tasksReducer,
+  },
+});
+
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
+```
+
+### Redux Usage Rule
+Redux manages client-side UI state (optimistic updates, filter selections, active project). It does NOT replace server-side data fetching. Server Components still query Prisma directly. Client Components dispatch actions after a successful `fetch()` mutation and call `router.refresh()` to sync server state.
 
 ### Client Component — Mutation Pattern
 ```typescript
@@ -351,14 +424,15 @@ export async function verifyToken(token: string) {
 ## 7. Build Order
 
 ### Phase 1 — Foundation
-- Init Next.js 15 project (`npx create-next-app@latest`)
-- Install all dependencies
-- Configure Tailwind CSS
+- Init Next.js 16 project (`npx create-next-app@latest`)
+- Install all dependencies (including Prisma, pg, Redux Toolkit)
+- Configure Tailwind CSS v4
 - Create `.env.local` with `DATABASE_URL` and `JWT_SECRET`
-- Run `schema.sql` against Neon DB
-- Implement `src/lib/db.ts`
+- Set up `prisma/schema.prisma` and run `npx prisma db push`
+- Implement `src/lib/db.ts` (Prisma singleton)
 - Implement `src/types/index.ts`
 - Implement `src/lib/api-response.ts`
+- Set up Redux store in `src/store/` with typed hooks
 
 ### Phase 2 — Auth Backend
 - Implement `src/lib/auth.ts` (JWT sign/verify)
@@ -404,28 +478,38 @@ export async function verifyToken(token: string) {
 ```json
 {
   "dependencies": {
-    "next": "^15.0.0",
+    "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@neondatabase/serverless": "^0.10.0",
-    "jose": "^5.0.0",
-    "bcryptjs": "^2.4.3",
-    "zod": "^3.23.0",
+    "@prisma/client": "^7.0.0",
+    "@prisma/adapter-pg": "^7.0.0",
+    "pg": "^8.0.0",
+    "@reduxjs/toolkit": "^2.0.0",
+    "react-redux": "^9.0.0",
+    "jose": "^6.0.0",
+    "bcryptjs": "^3.0.0",
+    "zod": "^4.0.0",
     "react-hook-form": "^7.52.0",
-    "@hookform/resolvers": "^3.9.0",
-    "lucide-react": "^0.400.0"
+    "@hookform/resolvers": "^5.0.0",
+    "lucide-react": "^1.0.0"
   },
   "devDependencies": {
+    "prisma": "^7.0.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/pg": "^8.0.0",
     "@types/node": "^20.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "typescript": "^5.0.0",
-    "tailwindcss": "^3.4.0",
-    "postcss": "^8.4.0",
-    "autoprefixer": "^10.4.0",
-    "eslint": "^8.0.0",
-    "eslint-config-next": "^15.0.0"
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/postcss": "^4.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^16.0.0",
+    "jest": "^30.0.0",
+    "jest-environment-jsdom": "^30.0.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/jest-dom": "^6.0.0",
+    "ts-jest": "^29.0.0"
   }
 }
 ```
@@ -441,7 +525,7 @@ export async function verifyToken(token: string) {
 | `Secure` flag in production | Cookie only sent over HTTPS |
 | Passwords hashed with `bcryptjs` (cost 12) | Brute-force resistant |
 | JWT secret minimum 32 random bytes | Prevents key guessing |
-| All DB queries use parameterized `sql` tag | Prevents SQL injection |
+| All DB queries go through Prisma — no raw SQL string concat | Prevents SQL injection |
 | All protected API routes call `getSession()` first | Ensures auth check never skipped |
 | Project/task ownership verified on every query | Prevents IDOR — always filter by `user_id` |
 | Zod validates all incoming request bodies | Rejects malformed/oversized payloads |
@@ -450,9 +534,10 @@ export async function verifyToken(token: string) {
 
 ### Ownership check pattern (MUST follow in every query)
 ```typescript
-// Always scope queries to the authenticated user
-const project = await getProjectById(id, session.userId);
-// getProjectById must include WHERE id = $1 AND user_id = $2
+// Always scope queries to the authenticated user — never find by id alone
+const project = await prisma.project.findFirst({
+  where: { id, userId: session.userId },
+});
 if (!project) return failure('Not found', 404);
 ```
 
@@ -490,7 +575,7 @@ if (!project) return failure('Not found', 404);
 - [ ] Dashboard shows correct task counts per status
 
 ### Security
-- [ ] No SQL built via string concatenation (all use parameterized `sql` tag)
+- [ ] No raw SQL — all queries go through Prisma
 - [ ] No raw passwords logged or returned
 - [ ] All `PATCH`/`DELETE` routes verify ownership before acting
 - [ ] `middleware.ts` matcher covers all app routes
