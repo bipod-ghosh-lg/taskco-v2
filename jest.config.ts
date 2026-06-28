@@ -10,6 +10,10 @@ const config: Config = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
+  // jose and @neondatabase/serverless ship as ESM — transform them through next/jest's babel
+  transformIgnorePatterns: [
+    '/node_modules/(?!(jose|@neondatabase/serverless)/)',
+  ],
 };
 
 export default createJestConfig(config);
