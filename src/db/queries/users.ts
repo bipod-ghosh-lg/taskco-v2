@@ -1,35 +1,24 @@
-import sql from '@/lib/db';
-import { User } from '@/types';
+import prisma from '@/lib/db';
+import type { User } from '@/generated/prisma/client';
 
 export async function createUser(
   email: string,
   name: string,
   passwordHash: string,
-): Promise<User> {
-  const rows = await sql`
-    INSERT INTO users (email, name, password)
-    VALUES (${email}, ${name}, ${passwordHash})
-    RETURNING id, email, name, created_at, updated_at
-  `;
-  return rows[0] as User;
+): Promise<Omit<User, 'password'>> {
+  return prisma.user.create({
+    data: { email, name, password: passwordHash },
+    select: { id: true, email: true, name: true, createdAt: true, updatedAt: true },
+  });
 }
 
-export async function getUserByEmail(
-  email: string,
-): Promise<(User & { password: string }) | null> {
-  const rows = await sql`
-    SELECT id, email, name, password, created_at, updated_at
-    FROM users
-    WHERE email = ${email}
-  `;
-  return (rows[0] as User & { password: string }) ?? null;
+export async function getUserByEmail(email: string): Promise<User | null> {
+  return prisma.user.findUnique({ where: { email } });
 }
 
-export async function getUserById(id: string): Promise<User | null> {
-  const rows = await sql`
-    SELECT id, email, name, created_at, updated_at
-    FROM users
-    WHERE id = ${id}
-  `;
-  return (rows[0] as User) ?? null;
+export async function getUserById(id: string): Promise<Omit<User, 'password'> | null> {
+  return prisma.user.findUnique({
+    where: { id },
+    select: { id: true, email: true, name: true, createdAt: true, updatedAt: true },
+  });
 }

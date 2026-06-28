@@ -32,12 +32,13 @@ function makeRequest(body: unknown): Request {
   });
 }
 
+const NOW = new Date();
 const FAKE_USER = {
   id: 'user-123',
   email: 'alice@example.com',
   name: 'Alice',
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
+  createdAt: NOW,
+  updatedAt: NOW,
 };
 
 // bcrypt hash of "secret123" (cost 4 — precomputed for speed)
@@ -59,7 +60,7 @@ describe('POST /api/auth/register', () => {
     expect(typeof body.data.token).toBe('string');
     expect(body.data.token.length).toBeGreaterThan(0);
     expect(body.data.user).toMatchObject({ id: 'user-123', email: 'alice@example.com', name: 'Alice' });
-    expect(body.data.user).toHaveProperty('created_at');
+    expect(body.data.user).toHaveProperty('createdAt');
   });
 
   it('success: user object never contains password or passwordHash', async () => {
@@ -145,7 +146,7 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(200);
     expect(typeof body.data.token).toBe('string');
     expect(body.data.user).toMatchObject({ id: 'user-123', email: 'alice@example.com', name: 'Alice' });
-    expect(body.data.user).toHaveProperty('created_at');
+    expect(body.data.user).toHaveProperty('createdAt');
   });
 
   it('success: user object never contains password or passwordHash', async () => {
